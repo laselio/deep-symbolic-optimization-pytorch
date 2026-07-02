@@ -3,15 +3,34 @@
 import os
 import ast
 import itertools
-from pkg_resources import resource_filename
+from pathlib import Path
 import zlib
 
 import click
 import pandas as pd
 import numpy as np
+import json
 
 from dso.functions import function_map
 
+def safe_parse(specs):
+    if specs is None or specs == "None":
+        return None
+
+    if isinstance(specs, str):
+        specs = specs.replace('""', '"')
+
+        try:
+            return json.loads(specs)
+        except Exception:
+            pass
+
+        try:
+            return ast.literal_eval(specs)
+        except Exception:
+            return None
+
+    return specs
 
 class BenchmarkDataset(object):
     """
@@ -66,18 +85,19 @@ class BenchmarkDataset(object):
 
         # Load benchmark data
         if root is None:
-            root = resource_filename("dso.task", "regression")
-        benchmark_path = os.path.join(root, benchmark_source)
+            root = Path(__file__).resolve().parent
+        else:
+            root = Path(root)
+        benchmark_path = root / benchmark_source
         benchmark_df = pd.read_csv(benchmark_path, index_col=0, encoding="ISO-8859-1")
-        row = benchmark_df.loc[name]
-        self.n_input_var = row["variables"]
+        self.n_input_var = int(str(benchmark_df.at[name, "variables"]).strip())
 
         # Create symbolic expression
-        self.numpy_expr = self.make_numpy_expr(row["expression"])
+        self.numpy_expr = self.make_numpy_expr(str(benchmark_df.at[name, "expression"]))
 
         # Get dataset specifications
-        self.train_spec = self.extract_dataset_specs(row["train_spec"])
-        self.test_spec = self.extract_dataset_specs(row["test_spec"])
+        self.train_spec = self.extract_dataset_specs(str(benchmark_df.at[name, "train_spec"]))
+        self.test_spec = self.extract_dataset_specs(str(benchmark_df.at[name, "test_spec"]))
         if self.test_spec is None:
             self.test_spec = self.train_spec
 
@@ -99,9 +119,9 @@ class BenchmarkDataset(object):
             print(f"WARNING: Ignoring negative noise value: {self.noise}")
 
         # Load default function set
-        function_set_path = os.path.join(root, "function_sets.csv")
+        function_set_path = root / "function_sets.csv"
         function_set_df = pd.read_csv(function_set_path, index_col=0)
-        function_set_name = row["function_set"]
+        function_set_name = str(benchmark_df.at[name, "function_set"])
         self.function_set = (
             function_set_df.loc[function_set_name].tolist()[0].strip().split(",")
         )
@@ -114,13 +134,13 @@ class BenchmarkDataset(object):
         output_message += f"Function set                   : {function_set_name} --> {self.function_set}\n"
         output_message += f"Function set path              : {function_set_path}\n"
         test_spec_txt = (
-            row["test_spec"]
-            if row["test_spec"] != "None"
-            else f'{row["test_spec"]} (Copy from train!)'
+            benchmark_df.at[name, "test_spec"]
+            if benchmark_df.at[name, "test_spec"] != "None"
+            else f'{benchmark_df.at[name, "test_spec"]} (Copy from train!)'
         )
         output_message += (
             "Dataset specifications         : \n"
-            + f'        Train --> {row["train_spec"]}\n'
+            + f'        Train --> {benchmark_df.at[name, "train_spec"]}\n'
         ) + f"        Test  --> {test_spec_txt}\n"
         random_choice_train = self.rng.randint(self.X_train.shape[0])
         random_sample_train = f"[{self.X_train[random_choice_train]}],[{self.y_train[random_choice_train]}]"
@@ -128,18 +148,18 @@ class BenchmarkDataset(object):
             "Built data set                 : \n"
             + f"        Train --> X:{self.X_train.shape}, y:{self.y_train.shape}, Sample: {random_sample_train}\n"
         )
-        if row["test_spec"] is not None:
+        if benchmark_df.at[name, "test_spec"] is not None:
             random_choice_test = self.rng.randint(self.X_test.shape[0])
             random_sample_test = f"[{self.X_test[random_choice_test]}],[{self.y_test[random_choice_test]}]"
             output_message += f"        Test  --> X:{self.X_test.shape}, y:{self.y_test.shape}, Sample: {random_sample_test}\n"
         if backup and logdir is not None:
-            output_message += self.save(logdir)
+            output_message += self.save(logdir) or ""
         output_message += "-- BUILDING DATASET END -------------\n"
         print(output_message)
         print(output_message)
 
     def extract_dataset_specs(self, specs):
-        specs = ast.literal_eval(specs)
+        specs = safe_parse(specs)
         if specs is not None:
             specs["distribution"] = list(list(specs.items())[0][1].items())[0][0]
             if specs["distribution"] == "E":
@@ -166,9 +186,10 @@ class BenchmarkDataset(object):
         count_iterations = 0
         while current_size < specs["dataset_size"]:
             if count_iterations > max_iterations:
+                shape_msg = X_tmp.shape if X_tmp is not None else (0, 0)
                 assert (
                     False
-                ), f"Dataset creation taking too long. Got {X_tmp.shape} from {specs}"
+                ), f"Dataset creation taking too long. Got {shape_msg} from {specs}"
             missing_value_count = specs["dataset_size"] - current_size
             # Get all X values
             X = self.make_X(specs, missing_value_count)
@@ -328,9 +349,9 @@ class BenchmarkDataset(object):
 def main(benchmark_source, plot, save_csv, sweep):
     """Plots all benchmark expressions."""
 
-    regression_path = resource_filename("dso.task", "regression/")
-    benchmark_path = os.path.join(regression_path, benchmark_source)
-    save_dir = os.path.join(regression_path, "log")
+    regression_path = Path(__file__).resolve().parent
+    benchmark_path = regression_path / benchmark_source
+    save_dir = regression_path / "log"
     df = pd.read_csv(benchmark_path, encoding="ISO-8859-1")
     names = df["name"].to_list()
     for name in names:

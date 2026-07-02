@@ -5,10 +5,8 @@ import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
 
-from pkg_resources import resource_filename
-import re
-import glob
 import os
+import re
 
 import click
 import pandas as pd
@@ -24,7 +22,7 @@ class LogEval:
     PLOT_HELPER = {
         "binding": {
             "name": "Binding Summary",
-            "x_label": ["Epoch"] * 19,
+            "x_label": ["Epoch"] * 15,
             "y_label": [
                 "Reward Best",
                 "Reward Max",
@@ -42,7 +40,7 @@ class LogEval:
                 "Invalid Avg Full",
                 "Invalid Avg Sub",
             ],
-            "x": ["index"] * 19,
+            "x": ["index"] * 15,
             "y": [
                 "r_best",
                 "r_max",
@@ -124,8 +122,7 @@ class LogEval:
         try:
             summary_path = os.path.join(self.save_path, "summary.csv")
             summary_df = pd.read_csv(summary_path)
-            summary_df = summary_df.reset_index(drop=True)
-            summary_df.sort_values("seed")
+            summary_df = summary_df.sort_values("seed").reset_index(drop=True)
             try:
                 self.metrics["success_rate"] = summary_df["success"].mean()
             except Exception:
@@ -142,17 +139,21 @@ class LogEval:
 
         # Get files that match regexp
         task_name = self.config["experiment"]["task_name"]
-        r = re.compile(f"dso_{task_name}_\d+_{log_type}.csv")
-        files = filter(r.match, os.listdir(self.save_path))
-        files = [os.path.join(self.save_path, f) for f in files]
-        seeds = [int(f.split("_")[-2]) for f in files]
+        pattern = re.compile(rf"dso_{re.escape(task_name)}_(\d+)_{log_type}\.csv$")
+        file_names = [fname for fname in os.listdir(self.save_path) if pattern.match(fname)]
+        files = []
+        for fname in sorted(file_names):
+            match = pattern.match(fname)
+            if match:
+                seed = int(match.group(1))
+                files.append((os.path.join(self.save_path, fname), seed))
 
         if not files:
             self.warnings.append(f"No data for {log_type}!")
             return None
 
         # Load each df
-        for f, seed in zip(files, seeds):
+        for f, seed in files:
             df = pd.read_csv(f)
             df.insert(0, "seed", seed)
             log_dfs.append(df)
@@ -172,7 +173,10 @@ class LogEval:
         # Compute PF across all runs
         if log_type == "pf":
             log_df = self._apply_pareto_filter(log_df)
-            log_df = log_df.sort_values(by=["r", "complexity", "seed"], ascending=False)
+            log_df = log_df.sort_values(
+                by=["r", "complexity", "seed"],
+                ascending=[False, True, False],
+            )
 
         log_df = log_df.reset_index(drop=True)
         log_df["index"] = log_df.index
@@ -180,19 +184,17 @@ class LogEval:
         return log_df
 
     def _apply_pareto_filter(self, df):
-        df = df.sort_values(by=["complexity"], ascending=True)
-        df = df.reset_index(drop=True)
-        filtered_df = pd.DataFrame(columns=list(df))
-        for index, row in df.iterrows():
-            if (
-                not (filtered_df["r"] >= row["r"]).any()
-                and not (filtered_df["complexity"] >= row["complexity"]).any()
-                or index == 0
-            ):
-                filtered_df = filtered_df.append(row, ignore_index=True)
-        # make sure that filtered_df has the same column types as the original df
-        filtered_df = filtered_df.astype(df.dtypes.to_dict())
-        return filtered_df
+        df = df.sort_values(by=["complexity"], ascending=True).reset_index(drop=True)
+        kept_rows = []
+        max_r = float("-inf")
+        for _, row in df.iterrows():
+            if row["r"] > max_r:
+                kept_rows.append(row)
+                max_r = row["r"]
+        if not kept_rows:
+            return df
+        filtered_df = pd.DataFrame(kept_rows).reset_index(drop=True)
+        return filtered_df.astype(df.dtypes.to_dict())
 
     def plot_results(
         self, results, log_type, boxplot_on=False, show_plots=False, save_plots=False
@@ -271,9 +273,9 @@ class LogEval:
             print(f'Max Samples/run__{self.config["training"]["n_samples"]}')
             if "success_rate" in self.metrics:
                 print(f'Success_rate_____{self.metrics["success_rate"]}')
-            if len(self.warnings) > 0:
+            if self.warnings:
                 print("Found issues:")
-                for warning in range(len(self.warnings)):
+                for warning in self.warnings:
                     print(f"  {warning}")
             if self.hof_df is not None and show_hof:
                 hof_show_count = min(show_count, len(self.hof_df))
@@ -323,23 +325,28 @@ class LogEval:
         print("-- ANALYZING LOG END ----------------")
 
 
+@click.command()
+@click.argument(
+    "config_path",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True),
+)
 @click.option(
     "--show_count",
     default=10,
     type=int,
-    help="Number of results we want to see from each metric.",
+    help="Number of results to show from each metric.",
 )
 @click.option("--show_hof", is_flag=True, help="Show Hall of Fame results.")
 @click.option("--show_pf", is_flag=True, help="Show Pareto Front results.")
 @click.option(
     "--show_plots",
     is_flag=True,
-    help="Generate plots and show results as simple plots.",
+    help="Generate plots and show results.",
 )
 @click.option(
     "--save_plots",
     is_flag=True,
-    help="Generate plots and safe to log file as simple plots.",
+    help="Generate plots and save them to disk.",
 )
 def main(config_path, show_count, show_hof, show_pf, show_plots, save_plots):
 

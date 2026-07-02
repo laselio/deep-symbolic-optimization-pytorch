@@ -1,7 +1,7 @@
 """Utility functions for control task."""
 
 import os
-from pkg_resources import resource_filename
+from pathlib import Path
 
 from datetime import datetime
 from glob import glob
@@ -78,8 +78,8 @@ def load_default_model(env_name):
     _require_stable_baselines()
 
     # Find default algorithm and model path for the environment
-    task_root = resource_filename("dso.task", "control")
-    root = os.path.join(task_root, "data", env_name)
+    task_root = Path(__file__).resolve().parent
+    root = task_root / "data" / env_name
     files = os.listdir(root)
     for f in files:
         if f.startswith("model-"):

@@ -9,7 +9,7 @@ from datetime import datetime
 
 import click
 
-from dso import DeepSymbolicOptimizer
+from dso.core import DeepSymbolicOptimizer
 from dso.logeval import LogEval
 from dso.config import load_config
 from dso.utils import safe_update_summary
@@ -35,8 +35,8 @@ def train_dso(config):
     model = DeepSymbolicOptimizer(deepcopy(config))
     start = time.time()
     result = model.train()
-    result["t"] = time.time() - start
-    result.pop("program")
+    result["t"] = time.time() - start # type: ignore
+    result.pop("program") # type: ignore
 
     save_path = model.config_experiment["save_path"]
     summary_path = os.path.join(save_path, "summary.csv")
@@ -206,7 +206,7 @@ def main(
                 print(f"Warning: Could not update summary stats at {summary_path}")
             print(
                 "INFO: Completed run {} of {} in {:.0f} s".format(
-                    i + 1, runs, result["t"]
+                    i + 1, runs, result["t"] # type: ignore
                 )
             )
     else:
@@ -216,7 +216,7 @@ def main(
                 print(f"Warning: Could not update summary stats at {summary_path}")
             print(
                 "INFO: Completed run {} of {} in {:.0f} s".format(
-                    i + 1, runs, result["t"]
+                    i + 1, runs, result["t"] # type: ignore
                 )
             )
 

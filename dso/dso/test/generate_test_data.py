@@ -1,8 +1,7 @@
 """Generate model test data for DeepSymbolicOptimizer."""
 
 import os
-
-from pkg_resources import resource_filename
+from pathlib import Path
 
 import torch
 import click
@@ -44,9 +43,9 @@ def main(stringency):
 
     model.train()
 
-    save_dir = resource_filename("dso.test", "data")
+    save_dir = Path(__file__).resolve().parent / "data"
     os.makedirs(save_dir, exist_ok=True)
-    save_path = os.path.join(save_dir, "test_model{}.pt".format(suffix))
+    save_path = save_dir / "test_model{}.pt".format(suffix)
     torch.save(model.policy.state_dict(), save_path)
 
 

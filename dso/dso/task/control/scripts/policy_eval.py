@@ -14,6 +14,7 @@ For debugging we can shorten running time and print more information:
 import csv
 import glob
 import os
+from pathlib import Path
 import numpy as np
 import click
 import gym
@@ -21,8 +22,6 @@ import subprocess
 
 from datetime import datetime
 import time
-
-from pkg_resources import resource_filename
 
 import dso.task.control.utils as U
 from dso.program import Program, from_str_tokens
@@ -112,9 +111,7 @@ class Model:
 
     def load_model(self, env_name):
         if self.alg != "symbolic":
-            env_models_path = os.path.join(
-                resource_filename("dso.task", "control"), "data", env_name
-            )
+            env_models_path = Path(__file__).resolve().parents[1] / "data" / env_name
             alg_models = glob.glob(
                 "{}/*-{}.*".format(env_models_path, self.alg.lower())
             )
