@@ -1,40 +1,35 @@
 from dso.utils import cached_property
-import gym
-from gym import spaces
+import gymnasium as gym
+from gymnasium import spaces
 import numpy as np
+from dacbench import benchmarks
+from dacbench.logger import Logger
+from dacbench.wrappers import PerformanceTrackingWrapper
+from pathlib import Path
 
-import dso.task.control  # Registers custom and third-party environments
+
 from dso.program import Program, from_str_tokens
 from dso.library import Library, DiscreteAction, MultiDiscreteAction
 from dso.functions import create_tokens, create_state_checkers
-import dso.task.control.utils as U
+from sympy import pprint
 from dso.task import HierarchicalTask
+
+from dacbench.benchmarks import FunctionApproximationBenchmark
 
 
 REWARD_SEED_SHIFT = int(1e6)  # Reserve the first million seeds for evaluation
 
-# Pre-computed values for reward scale
-REWARD_SCALE = {
-    "CustomCartPoleContinuous-v0": [0.0, 1000.0],
-    "MountainCarContinuous-v0": [0.0, 93.95],
-    "Pendulum-v0": [-1300.0, -147.56],
-    "InvertedDoublePendulumBulletEnv-v0": [0.0, 9357.77],
-    "InvertedPendulumSwingupBulletEnv-v0": [0.0, 891.34],
-    "LunarLanderContinuous-v2": [0.0, 272.65],
-    "HopperBulletEnv-v0": [0.0, 2741.86],
-    "ReacherBulletEnv-v0": [-5.0, 19.05],
-    "BipedalWalker-v2": [-60.0, 312.0],
-}
+
 
 
 class Action:
     """
-    This serves as an interface between the actions in DSO and gym. Depending
+    This serves as an interface between the actions in DSO and gymnasium. Depending
     on the action space, the corresponding type of symbolic action is computed and returned.
 
     Parameters
     ----------
-    space : gym.Space
+    space : gymnasium.Space
         Action space for the control problem.
         Supported option: Box, Discrete, MultiDiscrete.
     """
@@ -60,14 +55,8 @@ class Action:
         """Set anchor model, previously learned symbolic actions, and
         action_dim of the action being learned according to action_spec."""
 
-        # Load the anchor model (if applicable)
-        if "anchor" in action_spec:
-            # Load custom anchor, if provided, otherwise load default
-            if algorithm is not None and anchor is not None:
-                U.load_model(algorithm, anchor)
-            else:
-                U.load_default_model(env_name)
-            self.model = U.model
+        # TODO: Load the anchor model achording to benchmark if action space is multi-dimensional
+        self.model = None
 
         for i, spec in enumerate(action_spec):
             # Action taken from anchor policy
@@ -117,7 +106,7 @@ class Action:
         return np.asarray(action)
 
     def _to_gym_action(self, action):
-        """Returns the correct object expected by gym based on action space."""
+        """Returns the correct object expected by gymnasium based on action space."""
         # Replace NaNs with zero and clip infinites
         action[np.isnan(action)] = 0.0
         if self.is_discrete:
@@ -147,7 +136,7 @@ def create_decision_tree_tokens(
         thresholds for state variable xi. The sizes of the threshold lists
         can be different for different state variables.
 
-    action_space : gym.Space
+    action_space : gymnasium.Space
         Action space for the control problem.
 
     Returns
@@ -175,7 +164,7 @@ def create_decision_tree_tokens(
     return tokens
 
 
-class ControlTask(HierarchicalTask):
+class DACBenchTask(HierarchicalTask):
     """
     Class for the control task. Discrete objects are expressions, which are
     evaluated by directly using them as control policies in a reinforcement
@@ -187,13 +176,14 @@ class ControlTask(HierarchicalTask):
         function_set,
         env,
         action_spec,
+        experiment_name,
+        env_config=None,
         algorithm=None,
         anchor=None,
         n_episodes_train=5,
         n_episodes_test=1000,
         success_score=None,
         protected=False,
-        env_kwargs=None,
         fix_seeds=False,
         episode_seed_shift=0,
         reward_scale=True,
@@ -208,10 +198,17 @@ class ControlTask(HierarchicalTask):
             List of allowable functions.
 
         env : str
-            Name of Gym environment, e.g. "Pendulum-v0" or "my_module:MyEnv-v0".
+            Name of dacbench environment, e.g. "FunctionApproximation-v0".
+        
+        env_config : dict or None
+            Dictionary of environment configuration parameters. If None, use
+            default configuration for given environment.
 
         action_spec : list
             List of action specifications: None, "anchor", or a list of tokens.
+
+        experiment_name : str
+            Name of the experiment, used for the log file
 
         algorithm : str or None
             Name of algorithm corresponding to anchor path, or None to use
@@ -233,9 +230,7 @@ class ControlTask(HierarchicalTask):
 
         protected : bool
             Whether or not to use protected operators.
-
-        env_kwargs : dict
-            Dictionary of environment kwargs passed to gym.make().
+        TODO: remove unused parameters
 
         fix_seeds : bool
             If True, environment uses the first n_episodes_train seeds for
@@ -245,10 +240,6 @@ class ControlTask(HierarchicalTask):
         episode_seed_shift : int
             Training episode seeds start at episode_seed_shift * 100 +
             REWARD_SEED_SHIFT. This has no effect if fix_seeds == False.
-
-        reward_scale : list or bool
-            If list: list of [r_min, r_max] used to scale rewards. If True, use
-            default values in REWARD_SCALE. If False, don't scale rewards.
 
         decision_tree_threshold_set : list
             A set of constants {tj} for constructing nodes (xi < tj) in decision
@@ -265,43 +256,44 @@ class ControlTask(HierarchicalTask):
         self.episode_seed_shift = episode_seed_shift
         self.stochastic = not fix_seeds
 
-        # Create the environment
+        # Create the environment based on dacbench benchmark, add Wrappers for box space conversion and episode statistics
         env_name = env
-        if env_kwargs is None:
-            env_kwargs = {}
-        self.env = gym.make(env_name, **env_kwargs)
 
-        # HACK: Wrap pybullet envs in TimeFeatureWrapper
-        # TBD: Load the Zoo hyperparameters, including wrapper features, not just the model.
-        # Note Zoo is not implemented as a package, which might make this tedious
-        if "Bullet" in env_name:
-            self.env = U.TimeFeatureWrapper(self.env)
+        bench = getattr(benchmarks, env_name)()
+
+        if env_config is None:
+            self.env = bench.get_benchmark()
+        else:
+            self.env = bench.get_benchmark(**env_config)
+
+        pprint("Instance: {}".format(self.env.instance))
+        print(self.env.action_space)
+        # hooking env up with logging
+        self.logger = Logger(experiment_name=experiment_name, output_path=Path("logs"))
+        performance_logger = self.logger.add_module(PerformanceTrackingWrapper)
+
+        self.env = PerformanceTrackingWrapper(self.env, logger=performance_logger)
+        self.logger.set_env(self.env)
+
+        
+
+        
+        print(self.env.action_space)
+        print(type(self.env.action_space))
 
         self.action = Action(self.env.action_space)
 
         # Determine reward scaling
-        if isinstance(reward_scale, list):
-            assert (
-                len(reward_scale) == 2
-            ), "Reward scale should be length 2: \
-                                            min, max."
-            self.r_min, self.r_max = reward_scale # type: ignore
-        elif reward_scale:
-            if env_name in REWARD_SCALE:
-                self.r_min, self.r_max = REWARD_SCALE[env_name]
-            else:
-                raise RuntimeError(
-                    "{} has no default values for reward_scale. \
-                                   Use reward_scale=False or specify \
-                                   reward_scale=[r_min, r_max].".format(
-                        env_name
-                    )
-                )
-        else:
-            self.r_min = self.r_max = None
+        
+        self.r_min, self.r_max = bench.config["reward_range"]
+        
+        print(f"Minimum Reward: {self.r_min}, Maximum Reward:{self.r_max}")
+      
 
-        # Set the library (do this now in case there are symbolic actions)
+        # Set the library based on the action space shape (do this now in case there are symbolic actions)
         n_input_var = self.env.observation_space.shape[0]
+        
+
         if self.action.is_discrete or self.action.is_multi_discrete:
             print(
                 "WARNING: The provided function_set will be ignored because "
@@ -320,7 +312,7 @@ class ControlTask(HierarchicalTask):
         self.library = Library(tokens)
         Program.library = self.library
 
-        # Configuration assertions
+        # Configuration assertions (taken from original dso)
         assert (
             len(self.env.observation_space.shape) == 1
         ), "Only support vector observation spaces."
@@ -348,10 +340,12 @@ class ControlTask(HierarchicalTask):
         if self.action.action_dim is not None:
             self.name += "_a{}".format(self.action.action_dim)
 
+
     def run_episodes(self, p, n_episodes, evaluate):
         """Runs n_episodes episodes and returns each episodic reward."""
 
-        # Run the episodes and return the average episodic reward
+        # Run the episodes and use the gymnasium RecordEpisodeStatistics info
+        # when available, to avoid manual accumulation.
         r_episodes = np.zeros(
             n_episodes, dtype=np.float64
         )  # Episodic rewards for each episode
@@ -359,17 +353,30 @@ class ControlTask(HierarchicalTask):
 
             # During evaluation, always use the same seeds
             if evaluate:
-                self.env.seed(i)
+                obs, _ = self.env.reset(seed=i)
             elif self.fix_seeds:
                 seed = i + (self.episode_seed_shift * 100) + REWARD_SEED_SHIFT
-                self.env.seed(seed)
-            obs = self.env.reset()
+                obs, _ = self.env.reset(seed=seed)
+            else:
+                obs, _ = self.env.reset()
+
             done = False
+            episode_reward = 0.0
+            info = {}
             while not done:
                 action = self.action(p, obs)
-                obs, r, done, _ = self.env.step(action)
-                r_episodes[i] += r
+                obs, r, terminated, truncated, info = self.env.step(action)
+                if evaluate:
+                    self.logger.next_step()
+                done = terminated or truncated
+                episode_reward += r
 
+            if "episode" in info and "r" in info["episode"]:
+                r_episodes[i] = info["episode"]["r"]
+            else:
+                r_episodes[i] = episode_reward
+        if evaluate:
+            self.logger.next_episode()
         return r_episodes
 
     def reward_function(self, p, optimizing=False):
@@ -404,4 +411,5 @@ class ControlTask(HierarchicalTask):
             "success_rate": success_rate,
             "success": success,
         }
+        self.logger.close()
         return info

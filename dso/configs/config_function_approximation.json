@@ -1,0 +1,37 @@
+{
+   "task" : {
+      "task_type" : "dso.task.dacbench.dacbenchtask:DACBenchTask",
+
+      "env" : "FunctionApproximationBenchmark",
+
+      "env_config" : {
+        "dimension" : 1
+      },
+      
+      "experiment_name" : "test_dso_functionapproximation_dim1",
+      
+      "anchor" : null,
+
+      "action_spec" : [null],
+
+      "n_episodes_train" : 5,
+
+      "n_episodes_test" : 100,
+
+      "success_score": 999999.0,
+
+      "function_set" : ["add", "sub", "mul", "div", "sin", "cos", "exp", "log", 0.1, 1, 5],
+
+      "decision_tree_threshold_set" : [-0.05, 0.0, 0.01]
+   },
+
+  
+   "training" : {
+      "n_samples": 100
+   },
+   
+   "logging" : {
+      "hof" : false,
+      "save_pareto_front" : false
+   }
+}
