@@ -1,6 +1,6 @@
 from setuptools import setup
 import os
-from setuptools import dist
+from setuptools import dist, find_packages
 import numpy
 from Cython.Build import cythonize
 
@@ -45,7 +45,7 @@ setup(
     version="1.0dev",
     description="Deep symbolic optimization.",
     author="LLNL",
-    packages=["dso"],
+    packages=find_packages(),
     setup_requires=["numpy", "Cython"],
     ext_modules=cythonize([os.path.join("dso", "cyfunc.pyx")]),
     include_dirs=[numpy.get_include()],
