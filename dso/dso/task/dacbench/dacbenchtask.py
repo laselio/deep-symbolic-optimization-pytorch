@@ -375,8 +375,10 @@ class DACBenchTask(HierarchicalTask):
                 r_episodes[i] = info["episode"]["r"]
             else:
                 r_episodes[i] = episode_reward
-        if evaluate:
-            self.logger.next_episode()
+                
+            if evaluate:
+                self.logger.next_episode()
+
         return r_episodes
 
     def reward_function(self, p, optimizing=False):
