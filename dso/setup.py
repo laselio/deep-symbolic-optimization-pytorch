@@ -46,6 +46,7 @@ setup(
     description="Deep symbolic optimization.",
     author="LLNL",
     packages=find_packages(),
+    include_package_data=True,
     setup_requires=["numpy", "Cython"],
     ext_modules=cythonize([os.path.join("dso", "cyfunc.pyx")]),
     include_dirs=[numpy.get_include()],

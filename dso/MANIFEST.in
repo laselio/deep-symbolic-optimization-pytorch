@@ -1,0 +1,5 @@
+recursive-include dso *.json
+recursive-include dso *.yaml
+recursive-include dso *.yml
+recursive-include dso *.txt
+recursive-include dso *.csv
