@@ -177,6 +177,7 @@ class DACBenchTask(HierarchicalTask):
         env,
         action_spec,
         experiment_name,
+        logging_dir : str,
         env_config=None,
         algorithm=None,
         anchor=None,
@@ -209,6 +210,9 @@ class DACBenchTask(HierarchicalTask):
 
         experiment_name : str
             Name of the experiment, used for the log file
+
+        logging_dir : str
+            Path to logging directory.
 
         algorithm : str or None
             Name of algorithm corresponding to anchor path, or None to use
@@ -269,7 +273,7 @@ class DACBenchTask(HierarchicalTask):
         pprint("Instance: {}".format(self.env.instance))
         print(self.env.action_space)
         # hooking env up with logging
-        self.logger = Logger(experiment_name=experiment_name, output_path=Path("logs"))
+        self.logger = Logger(experiment_name=experiment_name, output_path=Path(logging_dir))
         performance_logger = self.logger.add_module(PerformanceTrackingWrapper)
 
         self.env = PerformanceTrackingWrapper(self.env, logger=performance_logger)
@@ -375,7 +379,7 @@ class DACBenchTask(HierarchicalTask):
                 r_episodes[i] = info["episode"]["r"]
             else:
                 r_episodes[i] = episode_reward
-                
+
             if evaluate:
                 self.logger.next_episode()
 
