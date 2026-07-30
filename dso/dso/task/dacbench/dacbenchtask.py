@@ -1,8 +1,7 @@
-from dso.utils import cached_property
-import gymnasium as gym
+
 from gymnasium import spaces
 import numpy as np
-from dacbench import benchmarks
+
 from dacbench.logger import Logger
 from dacbench.wrappers import PerformanceTrackingWrapper
 from pathlib import Path
@@ -14,7 +13,7 @@ from dso.functions import create_tokens, create_state_checkers
 from sympy import pprint
 from dso.task import HierarchicalTask
 
-from dacbench.benchmarks import FunctionApproximationBenchmark
+import dacbench_utils as util
 
 
 REWARD_SEED_SHIFT = int(1e6)  # Reserve the first million seeds for evaluation
@@ -55,7 +54,7 @@ class Action:
         """Set anchor model, previously learned symbolic actions, and
         action_dim of the action being learned according to action_spec."""
 
-        # TODO: Load the anchor model achording to benchmark if action space is multi-dimensional
+        # TODO: Load the anchor model according to benchmark if action space is multi-dimensional
         self.model = None
 
         for i, spec in enumerate(action_spec):
@@ -63,7 +62,7 @@ class Action:
             if spec == "anchor":
                 continue
 
-            # Action dimnension being learned
+            # Action dimension being learned
             if spec is None:
                 self.action_dim = i
 
@@ -101,13 +100,13 @@ class Action:
 
     def _get_action_from_program(self, p, obs):
         """Helper function to get action from Program p according to obs,
-        since Program.execute() requires 2D arrays but we only want 1D."""
+        since Program.execute() requires 2D arrays, but we only want 1D."""
         action = p.execute(np.array([obs]))[0]
         return np.asarray(action)
 
     def _to_gym_action(self, action):
         """Returns the correct object expected by gymnasium based on action space."""
-        # Replace NaNs with zero and clip infinites
+        # Replace Nans with zero and clip infinites
         action[np.isnan(action)] = 0.0
         if self.is_discrete:
             return int(action[0])
@@ -174,19 +173,15 @@ class DACBenchTask(HierarchicalTask):
     def __init__(
         self,
         function_set,
-        env,
+        env_name,
         action_spec,
         experiment_name,
         logging_dir : str,
-        env_config=None,
         algorithm=None,
         anchor=None,
         n_episodes_train=5,
         n_episodes_test=1000,
-        success_score=None,
         protected=False,
-        fix_seeds=False,
-        episode_seed_shift=0,
         reward_scale=True,
         decision_tree_threshold_set=None,
         ref_action=None,
@@ -198,7 +193,7 @@ class DACBenchTask(HierarchicalTask):
         function_set : list
             List of allowable functions.
 
-        env : str
+        env_name : str
             Name of dacbench environment, e.g. "FunctionApproximation-v0".
         
         env_config : dict or None
@@ -228,22 +223,8 @@ class DACBenchTask(HierarchicalTask):
         n_episodes_test : int
             Number of episodes to run during testing.
 
-        success_score : float
-            Episodic reward considered to be "successful." A Program will have
-            success=True if all n_episodes_test episodes achieve this score.
-
         protected : bool
             Whether or not to use protected operators.
-        TODO: remove unused parameters
-
-        fix_seeds : bool
-            If True, environment uses the first n_episodes_train seeds for
-            reward and the next n_episodes_test seeds for evaluation. This makes
-            the task deterministic.
-
-        episode_seed_shift : int
-            Training episode seeds start at episode_seed_shift * 100 +
-            REWARD_SEED_SHIFT. This has no effect if fix_seeds == False.
 
         decision_tree_threshold_set : list
             A set of constants {tj} for constructing nodes (xi < tj) in decision
@@ -255,29 +236,26 @@ class DACBenchTask(HierarchicalTask):
         # Set member variables used by member functions
         self.n_episodes_train = n_episodes_train
         self.n_episodes_test = n_episodes_test
-        self.success_score = success_score
-        self.fix_seeds = fix_seeds
-        self.episode_seed_shift = episode_seed_shift
-        self.stochastic = not fix_seeds
 
         # Create the environment based on dacbench benchmark, add Wrappers for box space conversion and episode statistics
-        env_name = env
 
-        bench = getattr(benchmarks, env_name)()
+        if env_name == "function_approximation_dim1_continuous":
+            self.env = util.create_function_approximation_dim1_float_env(seed=0)
 
-        if env_config is None:
-            self.env = bench.get_benchmark()
-        else:
-            self.env = bench.get_benchmark(**env_config)
+        # setting n_episodes_test to cover the full test instance_sets
+        self.n_episodes_test = len(self.env.test_set)
+
+        self.env.instance_updates = "round_robin"
 
         pprint("Instance: {}".format(self.env.instance))
         print(self.env.action_space)
         # hooking env up with logging
         self.logger = Logger(experiment_name=experiment_name, output_path=Path(logging_dir))
-        performance_logger = self.logger.add_module(PerformanceTrackingWrapper)
-
-        self.env = PerformanceTrackingWrapper(self.env, logger=performance_logger)
+        self.performance_logger = self.logger.add_module(PerformanceTrackingWrapper)
         self.logger.set_env(self.env)
+
+        self.env = PerformanceTrackingWrapper(self.env, logger=self.performance_logger)
+
 
         
 
@@ -289,7 +267,7 @@ class DACBenchTask(HierarchicalTask):
 
         # Determine reward scaling
         
-        self.r_min, self.r_max = bench.config["reward_range"]
+        self.r_min, self.r_max = self.env.config["reward_range"]
         
         print(f"Minimum Reward: {self.r_min}, Maximum Reward:{self.r_max}")
       
@@ -355,14 +333,9 @@ class DACBenchTask(HierarchicalTask):
         )  # Episodic rewards for each episode
         for i in range(n_episodes):
 
-            # During evaluation, always use the same seeds
-            if evaluate:
-                obs, _ = self.env.reset(seed=i)
-            elif self.fix_seeds:
-                seed = i + (self.episode_seed_shift * 100) + REWARD_SEED_SHIFT
-                obs, _ = self.env.reset(seed=seed)
-            else:
-                obs, _ = self.env.reset()
+            # Always use random seeds
+            obs, _ = self.env.reset()
+
 
             done = False
             episode_reward = 0.0
@@ -403,10 +376,13 @@ class DACBenchTask(HierarchicalTask):
         return r_avg
 
     def evaluate(self, p):
+        self.env.unwrapped.use_test_set()
+        self.env.unwrapped.instance_index = -1
 
         # Run the episodes
         r_episodes = self.run_episodes(p, self.n_episodes_test, evaluate=True)
 
+        self.env.unwrapped.use_training_set()
         # Compute eval statistics
         r_avg_test = np.mean(r_episodes)
         success_rate = np.mean(r_episodes >= self.success_score)
@@ -417,5 +393,4 @@ class DACBenchTask(HierarchicalTask):
             "success_rate": success_rate,
             "success": success,
         }
-        self.logger.close()
         return info
