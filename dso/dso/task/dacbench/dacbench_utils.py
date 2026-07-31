@@ -37,3 +37,25 @@ def create_function_approximation_dim1_float_env(seed):
     bench.read_instance_set()
     bench.read_instance_set(test=True)
     return FunctionApproximationEnv(bench.config)
+
+def create_theory_env(instance_set : str, test : bool = False):
+    from dacbench.benchmarks.theory_benchmark import TheoryBenchmark
+
+    config = {
+
+    # continuous action space
+    "discrete_action": False,
+    "min_action": 1.0,
+    "max_action": 50.0,
+    # simple reward
+    "reward_choice": "imp",
+    "problem": "LeadingOne",
+    "instance_set_path": instance_set,
+    }
+
+    benchmark = TheoryBenchmark(config=config)
+    env = benchmark.get_environment(test_env=test)
+    print(env.action_space)
+    print(env.config["reward_range"])
+    print(env.config["cutoff"])
+    return env

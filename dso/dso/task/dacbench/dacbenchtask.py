@@ -195,10 +195,7 @@ class DACBenchTask(HierarchicalTask):
 
         env_name : str
             Name of dacbench environment, e.g. "FunctionApproximation-v0".
-        
-        env_config : dict or None
-            Dictionary of environment configuration parameters. If None, use
-            default configuration for given environment.
+
 
         action_spec : list
             List of action specifications: None, "anchor", or a list of tokens.
@@ -241,9 +238,15 @@ class DACBenchTask(HierarchicalTask):
 
         if env_name == "function_approximation_dim1_continuous":
             self.env = util.create_function_approximation_dim1_float_env(seed=0)
+            # setting n_episodes_test to cover the full test instance_sets
+            self.n_episodes_test = len(self.env.test_set)
+        elif env_name == "theory_50_normal":
+            self.env = util.create_theory_env(instance_set="lo_rls_50.csv")
+            self.n_episodes_test = 400
 
-        # setting n_episodes_test to cover the full test instance_sets
-        self.n_episodes_test = len(self.env.test_set)
+        self.env_name = env_name
+
+
 
         self.env.instance_updates = "round_robin"
 
@@ -376,21 +379,19 @@ class DACBenchTask(HierarchicalTask):
         return r_avg
 
     def evaluate(self, p):
-        self.env.unwrapped.use_test_set()
-        self.env.unwrapped.instance_index = -1
+        if self.env_name == "function_approximation_dim1_continuous":
+            self.env.unwrapped.use_test_set()
+            self.env.unwrapped.instance_index = -1
 
         # Run the episodes
         r_episodes = self.run_episodes(p, self.n_episodes_test, evaluate=True)
 
-        self.env.unwrapped.use_training_set()
+        if self.env_name == "function_approximation_dim1_continuous":
+            self.env.unwrapped.use_training_set()
         # Compute eval statistics
         r_avg_test = np.mean(r_episodes)
-        success_rate = np.mean(r_episodes >= self.success_score)
-        success = success_rate == 1.0
 
         info = {
-            "r_avg_test": r_avg_test,
-            "success_rate": success_rate,
-            "success": success,
+            "r_avg_test": r_avg_test
         }
         return info
