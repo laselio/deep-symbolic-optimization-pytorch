@@ -234,6 +234,7 @@ class DACBenchTask(HierarchicalTask):
         self.n_episodes_train = n_episodes_train
         self.n_episodes_test = n_episodes_test
         self.stochastic = True
+        self.reward_scale = reward_scale
         # Create the environment based on dacbench benchmark, add Wrappers for box space conversion and episode statistics
 
         if env_name == "function_approximation_dim1_continuous":
@@ -372,8 +373,8 @@ class DACBenchTask(HierarchicalTask):
         # Return the mean
         r_avg = np.mean(r_episodes)
 
-        # Scale rewards to [0, 1]
-        if self.r_min is not None:
+        # Scale rewards to [0, 1] if reward_scale == true
+        if self.reward_scale and self.r_min is not None:
             r_avg = (r_avg - self.r_min) / (self.r_max - self.r_min) # type: ignore
 
         return r_avg
