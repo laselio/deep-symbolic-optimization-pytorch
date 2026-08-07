@@ -1,12 +1,11 @@
 from dacbench.benchmarks import FunctionApproximationBenchmark
 from dacbench.envs import FunctionApproximationEnv
-from pathlib import Path
 
 import ConfigSpace as CS  # noqa: N817
 import ConfigSpace.hyperparameters as CSH
 
 import numpy as np
-import pandas as pd
+import gymnasium as gym
 
 def create_function_approximation_dim1_float_env(seed):
     # loads default config
@@ -69,10 +68,24 @@ def create_toy_sgd_env(instance_set: str = "toysgd_default.csv" , test_set: str 
         "test_set_path": test_set
     }
 
-    benchmark = TheoryBenchmark(config=config)
+    benchmark = ToySGDBenchmark(config=config)
     env = benchmark.get_environment()
+    env = ScalarActionWrapper(env=env)
     print(env.action_space)
     print(env.config["reward_range"])
     print(env.config["cutoff"])
 
     return env
+
+class ScalarActionWrapper(gym.ActionWrapper):
+    def __init__(self, env):
+        super().__init__(env)
+
+        self.action_space = gym.spaces.Box(
+            low=env.action_space.low[:1],
+            high=env.action_space.high[:1],
+            dtype=np.float32,
+        )
+
+    def action(self, action):
+        return float(action[0])  # scalar log-learning-rate
