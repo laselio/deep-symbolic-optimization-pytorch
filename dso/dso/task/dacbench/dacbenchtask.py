@@ -177,6 +177,9 @@ class DACBenchTask(HierarchicalTask):
         action_spec,
         experiment_name,
         logging_dir : str,
+        instance_set : str,
+        test_set : str,
+        max_action: float,
         algorithm=None,
         anchor=None,
         n_episodes_train=5,
@@ -206,6 +209,14 @@ class DACBenchTask(HierarchicalTask):
         logging_dir : str
             Path to logging directory.
 
+        instance_set: str
+            Only used in TheoryBenchmark for now, File name of the instance_set used for training
+
+        test_set: str
+            Only used in TheoryBenchmark for now, File name of the instance_set used for testing
+
+        max_action: float
+            Used only in case of TheoryBenchmark for now, controls upper bound of action interval
         algorithm : str or None
             Name of algorithm corresponding to anchor path, or None to use
             default anchor for given environment.
@@ -235,14 +246,18 @@ class DACBenchTask(HierarchicalTask):
         self.n_episodes_test = n_episodes_test
         self.stochastic = True
         self.reward_scale = reward_scale
-        # Create the environment based on dacbench benchmark, add Wrappers for box space conversion and episode statistics
 
+        # Create the environment based on dacbench benchmark, add Wrappers for box space conversion and episode statistics
+        self.eval_env = None
         if env_name == "function_approximation_dim1_continuous":
             self.env = util.create_function_approximation_dim1_float_env(seed=0)
             # setting n_episodes_test to cover the full test instance_sets
             self.n_episodes_test = len(self.env.test_set)
         elif env_name == "theory_50_normal":
-            self.env = util.create_theory_env(instance_set="lo_rls_50.csv")
+            self.env = util.create_theory_env(instance_set=instance_set,instance_size=max_action)
+            self.eval_env = util.create_theory_env(instance_set=test_set, instance_size=max_action, test=True)
+            self.eval_env.instance_updates = "round_robin"
+
             self.n_episodes_test = 400
 
         self.env_name = env_name
@@ -335,6 +350,11 @@ class DACBenchTask(HierarchicalTask):
         r_episodes = np.zeros(
             n_episodes, dtype=np.float64
         )  # Episodic rewards for each episode
+
+        if evaluate and self.eval_env is not None:
+            print("Evaluating on separate Evaluation Env")
+            self.env = self.eval_env
+
         for i in range(n_episodes):
 
             # Always use random seeds
