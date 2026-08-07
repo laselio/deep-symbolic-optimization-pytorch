@@ -48,7 +48,7 @@ def create_theory_env(instance_set : str, instance_size: float, test : bool = Fa
     "min_action": 1.0,
     "max_action": instance_size,
     # simple reward
-    "reward_choice": "minus_eval",
+    "reward_choice": "minus_evals",
     "problem": "LeadingOne",
     "instance_set_path": instance_set,
     }
@@ -58,4 +58,21 @@ def create_theory_env(instance_set : str, instance_size: float, test : bool = Fa
     print(env.action_space)
     print(env.config["reward_range"])
     print(env.config["cutoff"])
+    return env
+
+# per default instance_set and test_set are the same.
+def create_toy_sgd_env(instance_set: str = "toysgd_default.csv" , test_set: str = "toysgd_default.csv" ):
+    from dacbench.benchmarks.toysgd_benchmark import ToySGDBenchmark
+
+    config = {
+        "instance_set_path": instance_set,
+        "test_set_path": test_set
+    }
+
+    benchmark = TheoryBenchmark(config=config)
+    env = benchmark.get_environment()
+    print(env.action_space)
+    print(env.config["reward_range"])
+    print(env.config["cutoff"])
+
     return env
