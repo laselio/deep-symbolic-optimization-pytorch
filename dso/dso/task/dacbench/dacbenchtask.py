@@ -249,17 +249,20 @@ class DACBenchTask(HierarchicalTask):
 
         # Create the environment based on dacbench benchmark, add Wrappers for box space conversion and episode statistics
         self.eval_env = None
-        if env_name == "function_approximation_dim1_continuous":
+        self.has_test_set = True
+        if env_name == "FunctionApproximationBenchmark":
             self.env = util.create_function_approximation_dim1_float_env(seed=0)
             # setting n_episodes_test to cover the full test instance_sets
             self.n_episodes_test = len(self.env.test_set)
-        elif env_name == "theory_50_normal":
+        elif env_name == "TheoryBenchmark":
             self.env = util.create_theory_env(instance_set=instance_set,instance_size=max_action)
             self.eval_env = util.create_theory_env(instance_set=test_set, instance_size=max_action, test=True)
             self.eval_env.instance_updates = "round_robin"
-
+            has_test_set = False
             self.n_episodes_test = 400
-
+        elif env_name == "ToySGDBenchmark":
+            self.env = util.create_toy_sgd_env(instance_set=instance_set,test_set=test_set)
+            self.n_episodes_test = 400
         self.env_name = env_name
 
 
@@ -400,14 +403,14 @@ class DACBenchTask(HierarchicalTask):
         return r_avg
 
     def evaluate(self, p):
-        if self.env_name == "function_approximation_dim1_continuous":
+        if self.has_test_set:
             self.env.unwrapped.use_test_set()
             self.env.unwrapped.instance_index = -1
 
         # Run the episodes
         r_episodes = self.run_episodes(p, self.n_episodes_test, evaluate=True)
 
-        if self.env_name == "function_approximation_dim1_continuous":
+        if self.has_test_set:
             self.env.unwrapped.use_training_set()
         # Compute eval statistics
         r_avg_test = np.mean(r_episodes)
