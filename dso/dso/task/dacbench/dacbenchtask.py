@@ -1,11 +1,9 @@
-
 from gymnasium import spaces
 import numpy as np
 
 from dacbench.logger import Logger
 from dacbench.wrappers import PerformanceTrackingWrapper
 from pathlib import Path
-
 
 from dso.program import Program, from_str_tokens
 from dso.library import Library, DiscreteAction, MultiDiscreteAction
@@ -14,11 +12,10 @@ from sympy import pprint
 from dso.task import HierarchicalTask
 
 from dso.task.dacbench import dacbench_utils as util
-from dacbench.wrappers import ObservationWrapper
+from gymnasium.spaces import Dict
+from gymnasium.wrappers import FlattenObservation
 
 REWARD_SEED_SHIFT = int(1e6)  # Reserve the first million seeds for evaluation
-
-
 
 
 class Action:
@@ -116,7 +113,7 @@ class Action:
 
 
 def create_decision_tree_tokens(
-    n_obs, obs_threshold_sets, action_space, ref_action=None
+        n_obs, obs_threshold_sets, action_space, ref_action=None
 ):
     """
     Create a list of tokens for learning decision trees. The action space
@@ -171,23 +168,23 @@ class DACBenchTask(HierarchicalTask):
     """
 
     def __init__(
-        self,
-        function_set,
-        env_name,
-        action_spec,
-        experiment_name,
-        logging_dir : str,
-        instance_set : str,
-        test_set : str,
-        max_action: float,
-        algorithm=None,
-        anchor=None,
-        n_episodes_train=5,
-        n_episodes_test=1000,
-        protected=False,
-        reward_scale=True,
-        decision_tree_threshold_set=None,
-        ref_action=None,
+            self,
+            function_set,
+            env_name,
+            action_spec,
+            experiment_name,
+            logging_dir: str,
+            instance_set: str,
+            test_set: str,
+            max_action: float,
+            algorithm=None,
+            anchor=None,
+            n_episodes_train=5,
+            n_episodes_test=1000,
+            protected=False,
+            reward_scale=True,
+            decision_tree_threshold_set=None,
+            ref_action=None,
     ):
         """
         Parameters
@@ -255,22 +252,21 @@ class DACBenchTask(HierarchicalTask):
             # setting n_episodes_test to cover the full test instance_sets
             self.n_episodes_test = len(self.env.test_set)
         elif env_name == "TheoryBenchmark":
-            self.env = util.create_theory_env(instance_set=instance_set,instance_size=max_action)
+            self.env = util.create_theory_env(instance_set=instance_set, instance_size=max_action)
             self.eval_env = util.create_theory_env(instance_set=test_set, instance_size=max_action, test=True)
             self.eval_env.instance_updates = "round_robin"
             has_test_set = False
             self.n_episodes_test = 400
         elif env_name == "ToySGDBenchmark":
-            self.env = util.create_toy_sgd_env(instance_set=instance_set,test_set=test_set)
+            self.env = util.create_toy_sgd_env(instance_set=instance_set, test_set=test_set)
             self.n_episodes_test = 400
         self.env_name = env_name
 
+        # Determine reward scaling
 
+        self.r_min, self.r_max = self.env.config["reward_range"]
 
         self.env.instance_updates = "round_robin"
-
-        if self.env.observation_space.shape[0] is None:
-            self.env = ObservationWrapper(self.env)
 
         pprint("Instance: {}".format(self.env.instance))
         print(self.env.action_space)
@@ -280,26 +276,27 @@ class DACBenchTask(HierarchicalTask):
         self.logger.set_env(self.env)
 
         self.env = PerformanceTrackingWrapper(self.env, logger=self.performance_logger)
+        print(self.env.observation_space)
+        if isinstance(self.env.observation_space, Dict):
+            print("Flattening")
+            self.env = FlattenObservation(self.env)
+            if self.eval_env is not None:
+                self.eval_env = FlattenObservation(self.eval_env)
+        print(self.env.observation_space)
 
+        print(type(self.env.observation_space))
 
-        
+        print(self.env.observation_space.shape)
 
-        
         print(self.env.action_space)
         print(type(self.env.action_space))
 
         self.action = Action(self.env.action_space)
 
-        # Determine reward scaling
-        
-        self.r_min, self.r_max = self.env.config["reward_range"]
-        
         print(f"Minimum Reward: {self.r_min}, Maximum Reward:{self.r_max}")
-      
 
         # Set the library based on the action space shape (do this now in case there are symbolic actions)
         n_input_var = self.env.observation_space.shape[0]
-        
 
         if self.action.is_discrete or self.action.is_multi_discrete:
             print(
@@ -321,7 +318,7 @@ class DACBenchTask(HierarchicalTask):
 
         # Configuration assertions (taken from original dso)
         assert (
-            len(self.env.observation_space.shape) == 1
+                len(self.env.observation_space.shape) == 1
         ), "Only support vector observation spaces."
         n_actions = self.action.n_actions
         assert n_actions == len(
@@ -332,7 +329,7 @@ class DACBenchTask(HierarchicalTask):
         )
         if not self.action.is_multi_discrete:
             assert (
-                len([v for v in action_spec if v is None]) <= 1
+                    len([v for v in action_spec if v is None]) <= 1
             ), "No more than 1 action_spec element can be None."
         assert int(algorithm is None) + int(anchor is None) in [
             0,
@@ -346,7 +343,6 @@ class DACBenchTask(HierarchicalTask):
         self.name = env_name
         if self.action.action_dim is not None:
             self.name += "_a{}".format(self.action.action_dim)
-
 
     def run_episodes(self, p, n_episodes, evaluate):
         """Runs n_episodes episodes and returns each episodic reward."""
@@ -365,7 +361,6 @@ class DACBenchTask(HierarchicalTask):
 
             # Always use random seeds
             obs, _ = self.env.reset()
-
 
             done = False
             episode_reward = 0.0
@@ -401,7 +396,7 @@ class DACBenchTask(HierarchicalTask):
 
         # Scale rewards to [0, 1] if reward_scale == true
         if self.reward_scale and self.r_min is not None:
-            r_avg = (r_avg - self.r_min) / (self.r_max - self.r_min) # type: ignore
+            r_avg = (r_avg - self.r_min) / (self.r_max - self.r_min)  # type: ignore
 
         return r_avg
 
