@@ -71,6 +71,7 @@ def create_toy_sgd_env(instance_set: str = "toysgd_default.csv" , test_set: str 
     benchmark = ToySGDBenchmark(config=config)
     env = benchmark.get_environment()
     env = ScalarActionWrapper(env=env)
+    env = ToySGDObsFixWrapper(env=env)
     print(env.action_space)
     print(env.config["reward_range"])
     print(env.config["cutoff"])
@@ -78,8 +79,10 @@ def create_toy_sgd_env(instance_set: str = "toysgd_default.csv" , test_set: str 
     return env
 
 class ScalarActionWrapper(gym.ActionWrapper):
-    def __init__(self, env):
+    def __init__(self, env, fixed_momentum=-5.0):
         super().__init__(env)
+
+        self.fixed_momentum = fixed_momentum
 
         self.action_space = gym.spaces.Box(
             low=env.action_space.low[:1],
@@ -88,4 +91,105 @@ class ScalarActionWrapper(gym.ActionWrapper):
         )
 
     def action(self, action):
-        return float(action[0])  # scalar log-learning-rate
+        return np.array(
+            [action[0], self.fixed_momentum],
+            dtype=np.float32
+        )
+
+    def __getattribute__(self, name):
+        """Get attribute value of wrapper if available and of env if not.
+
+        Parameters
+        ----------
+        name : str
+            Attribute to get
+
+        Returns:
+        -------
+        value
+            Value of given name
+
+        """
+        if name in [
+            "performance_interval",
+            "track_instances",
+            "overall_performance",
+            "performance_intervals",
+            "current_performance",
+            "env",
+            "get_performance",
+            "step",
+            "instance_performances",
+            "episode_performance",
+            "render_performance",
+            "render_instance_performance",
+            "logger",
+        ]:
+            return object.__getattribute__(self, name)
+
+        return getattr(self.env, name)
+
+
+ # scalar log-learning-rate
+# make it return the learning rate and the fixed momentum
+# Observation wrapper der alles in float 32 casted
+# __get attribute does not work, cast all relevant attributes through debugging
+
+class ToySGDObsFixWrapper(gym.ObservationWrapper):
+    def __init__(self, env):
+        super().__init__(env)
+
+
+        #add env attributes
+    def observation(self, obs):
+        return {
+            "remaining_budget": np.array(
+                [obs["remaining_budget"]],
+                dtype=np.float32
+            ),
+            "gradient": np.asarray(
+                obs["gradient"],
+                dtype=np.float32
+            ),
+            "learning_rate": np.array(
+                [obs["learning_rate"]],
+                dtype=np.float32
+            ),
+            "momentum": np.array(
+                [obs["momentum"]],
+                dtype=np.float32
+            ),
+        }
+
+    def __getattribute__(self, name):
+        """Get attribute value of wrapper if available and of env if not.
+
+        Parameters
+        ----------
+        name : str
+            Attribute to get
+
+        Returns:
+        -------
+        value
+            Value of given name
+
+        """
+        if name in [
+            "performance_interval",
+            "track_instances",
+            "overall_performance",
+            "performance_intervals",
+            "current_performance",
+            "env",
+            "get_performance",
+            "step",
+            "instance_performances",
+            "episode_performance",
+            "render_performance",
+            "render_instance_performance",
+            "logger",
+        ]:
+            return object.__getattribute__(self, name)
+
+        return getattr(self.env, name)
