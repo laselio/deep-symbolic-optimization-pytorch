@@ -82,8 +82,11 @@ def create_toy_sgd_env(instance_set: str = "toysgd_default.csv" , test_set: str 
 class ScalarActionWrapper(gym.ActionWrapper):
     def __init__(self, env, fixed_momentum=-5.0):
         super().__init__(env)
-
+        self.config = env.config
         self.fixed_momentum = fixed_momentum
+        self.env = env
+        self.initial_seed = env.initial_seed
+        self.instance = env.instance
 
         self.action_space = gym.spaces.Box(
             low=env.action_space.low[:1],
@@ -96,39 +99,8 @@ class ScalarActionWrapper(gym.ActionWrapper):
             [action[0], self.fixed_momentum],
             dtype=np.float32
         )
-
-    def __getattribute__(self, name):
-        """Get attribute value of wrapper if available and of env if not.
-
-        Parameters
-        ----------
-        name : str
-            Attribute to get
-
-        Returns:
-        -------
-        value
-            Value of given name
-
-        """
-        if name in [
-            "performance_interval",
-            "track_instances",
-            "overall_performance",
-            "performance_intervals",
-            "current_performance",
-            "env",
-            "get_performance",
-            "step",
-            "instance_performances",
-            "episode_performance",
-            "render_performance",
-            "render_instance_performance",
-            "logger",
-        ]:
-            return object.__getattribute__(self, name)
-
-        return getattr(self.env, name)
+    def get_inst_id(self):
+        self.env.get_inst_id()
 
 
  # scalar log-learning-rate
@@ -139,7 +111,10 @@ class ScalarActionWrapper(gym.ActionWrapper):
 class ToySGDObsFixWrapper(gym.ObservationWrapper):
     def __init__(self, env):
         super().__init__(env)
-
+        self.config =env.config
+        self.env = env
+        self.initial_seed = env.initial_seed
+        self.instance = env.instance
 
         #add env attributes
     def observation(self, obs):
@@ -162,35 +137,6 @@ class ToySGDObsFixWrapper(gym.ObservationWrapper):
             ),
         }
 
-    def __getattribute__(self, name):
-        """Get attribute value of wrapper if available and of env if not.
+    def get_inst_id(self):
+        self.env.get_inst_id()
 
-        Parameters
-        ----------
-        name : str
-            Attribute to get
-
-        Returns:
-        -------
-        value
-            Value of given name
-
-        """
-        if name in [
-            "performance_interval",
-            "track_instances",
-            "overall_performance",
-            "performance_intervals",
-            "current_performance",
-            "env",
-            "get_performance",
-            "step",
-            "instance_performances",
-            "episode_performance",
-            "render_performance",
-            "render_instance_performance",
-            "logger",
-        ]:
-            return object.__getattribute__(self, name)
-
-        return getattr(self.env, name)
