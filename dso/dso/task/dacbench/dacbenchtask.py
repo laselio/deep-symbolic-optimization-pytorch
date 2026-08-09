@@ -13,7 +13,7 @@ from dso.functions import create_tokens, create_state_checkers
 from sympy import pprint
 from dso.task import HierarchicalTask
 
-import dacbench_utils as util
+from dso.task.dacbench import dacbench_utils as util
 
 
 REWARD_SEED_SHIFT = int(1e6)  # Reserve the first million seeds for evaluation
