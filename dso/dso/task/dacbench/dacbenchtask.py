@@ -14,7 +14,7 @@ from sympy import pprint
 from dso.task import HierarchicalTask
 
 from dso.task.dacbench import dacbench_utils as util
-
+from dacbench.wrappers import ObservationWrapper
 
 REWARD_SEED_SHIFT = int(1e6)  # Reserve the first million seeds for evaluation
 
@@ -268,6 +268,9 @@ class DACBenchTask(HierarchicalTask):
 
 
         self.env.instance_updates = "round_robin"
+
+        if self.env.observation_space.shape[0] is None:
+            self.env = ObservationWrapper(self.env)
 
         pprint("Instance: {}".format(self.env.instance))
         print(self.env.action_space)
