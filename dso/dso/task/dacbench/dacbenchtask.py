@@ -276,9 +276,21 @@ class DACBenchTask(HierarchicalTask):
         # hooking env up with logging
         self.logger = Logger(experiment_name=experiment_name, output_path=Path(logging_dir))
         self.performance_logger = self.logger.add_module(PerformanceTrackingWrapper)
-        self.logger.set_env(self.env)
 
-        self.env = PerformanceTrackingWrapper(self.env, logger=self.performance_logger)
+        if self.has_test_set:
+            self.env = PerformanceTrackingWrapper(
+                self.env,
+                logger=self.performance_logger
+            )
+            self.logger.set_env(self.env)
+
+        else:
+            self.eval_env = PerformanceTrackingWrapper(
+                self.eval_env,
+                logger=self.performance_logger
+            )
+            self.logger.set_env(self.eval_env)
+
         print(self.env.observation_space)
         if isinstance(self.env.observation_space, Dict):
             print("Flattening")
@@ -355,22 +367,22 @@ class DACBenchTask(HierarchicalTask):
         r_episodes = np.zeros(
             n_episodes, dtype=np.float64
         )  # Episodic rewards for each episode
-
+        eval_env = self.env
         if evaluate and self.eval_env is not None:
             print("Evaluating on separate Evaluation Env")
-            self.env = self.eval_env
+            eval_env = self.eval_env
 
+        print(n_episodes)
         for i in range(n_episodes):
-
             # Always use random seeds
-            obs, _ = self.env.reset()
+            obs, _ = eval_env.reset()
 
             done = False
             episode_reward = 0.0
             info = {}
             while not done:
                 action = self.action(p, obs)
-                obs, r, terminated, truncated, info = self.env.step(action)
+                obs, r, terminated, truncated, info = eval_env.step(action)
                 if evaluate:
                     self.logger.next_step()
                 done = terminated or truncated
@@ -383,6 +395,7 @@ class DACBenchTask(HierarchicalTask):
 
             if evaluate:
                 self.logger.next_episode()
+                print("episode", i)
 
         return r_episodes
 
@@ -415,6 +428,8 @@ class DACBenchTask(HierarchicalTask):
             self.env.unwrapped.use_training_set()
         # Compute eval statistics
         r_avg_test = np.mean(r_episodes)
+        print("len(r_episodes) =", len(r_episodes))
+        print("first 10 =", r_episodes[:10])
 
         info = {
             "r_avg_test": r_avg_test
