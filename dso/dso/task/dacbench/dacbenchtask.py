@@ -255,11 +255,14 @@ class DACBenchTask(HierarchicalTask):
             self.env = util.create_theory_env(instance_set=instance_set, instance_size=max_action)
             self.eval_env = util.create_theory_env(instance_set=test_set, instance_size=max_action, test=True)
             self.eval_env.instance_updates = "round_robin"
-            has_test_set = False
+            self.has_test_set = False
             self.n_episodes_test = 400
         elif env_name == "ToySGDBenchmark":
             self.env = util.create_toy_sgd_env(instance_set=instance_set, test_set=test_set)
             self.n_episodes_test = 400
+        else:
+            print("Invalid Benchmark Name")
+            return -1
         self.env_name = env_name
 
         # Determine reward scaling
