@@ -100,7 +100,7 @@ class ScalarActionWrapper(gym.ActionWrapper):
             dtype=np.float32
         )
     def get_inst_id(self):
-        self.env.get_inst_id()
+        return self.env.get_inst_id()
 
 
  # scalar log-learning-rate
@@ -138,5 +138,5 @@ class ToySGDObsFixWrapper(gym.ObservationWrapper):
         }
 
     def get_inst_id(self):
-        self.env.get_inst_id()
+        return self.env.get_inst_id()
 
