@@ -262,7 +262,7 @@ class DACBenchTask(HierarchicalTask):
             self.n_episodes_test = 400
         else:
             print("Invalid Benchmark Name")
-            return -1
+
         self.env_name = env_name
 
         # Determine reward scaling
