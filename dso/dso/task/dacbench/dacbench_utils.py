@@ -60,7 +60,7 @@ def create_theory_env(instance_set : str, instance_size: float, test : bool = Fa
     return env
 
 # per default instance_set and test_set are the same.
-def create_toy_sgd_env(instance_set: str = "toysgd_default.csv" , test_set: str = "toysgd_default.csv" ):
+def create_toy_sgd_env(instance_set: str = "toysgd_default.csv" , test_set: str = "toysgd_default.csv", fixed_momentum: float = -5 ):
     from dacbench.benchmarks.toysgd_benchmark import ToySGDBenchmark
     from dacbench.abstract_benchmark import objdict
 
@@ -71,7 +71,7 @@ def create_toy_sgd_env(instance_set: str = "toysgd_default.csv" , test_set: str 
 
     benchmark = ToySGDBenchmark(config=config)
     env = benchmark.get_environment()
-    env = ScalarActionWrapper(env=env)
+    env = ScalarActionWrapper(env=env, fixed_momentum=fixed_momentum)
     env = ToySGDObsFixWrapper(env=env)
     print(env.action_space)
     print(env.config["reward_range"])
