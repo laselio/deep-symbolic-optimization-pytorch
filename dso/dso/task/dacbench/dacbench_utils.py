@@ -60,7 +60,7 @@ def create_theory_env(instance_set : str, instance_size: float, test : bool = Fa
     return env
 
 # per default instance_set and test_set are the same.
-def create_toy_sgd_env(instance_set: str = "toysgd_default.csv" , test_set: str = "toysgd_default.csv", fixed_momentum: float = -5 ):
+def create_toy_sgd_env(instance_set: str = "toysgd_default.csv" , test_set: str = "toysgd_default.csv", fixed_momentum: float = -2.915148306638):
     from dacbench.benchmarks.toysgd_benchmark import ToySGDBenchmark
     from dacbench.abstract_benchmark import objdict
 
@@ -80,7 +80,7 @@ def create_toy_sgd_env(instance_set: str = "toysgd_default.csv" , test_set: str 
     return env
 
 class ScalarActionWrapper(gym.ActionWrapper):
-    def __init__(self, env, fixed_momentum=-5.0):
+    def __init__(self, env, fixed_momentum=-2.915148306638):
         super().__init__(env)
         self.config = env.config
         self.fixed_momentum = fixed_momentum
@@ -139,4 +139,3 @@ class ToySGDObsFixWrapper(gym.ObservationWrapper):
 
     def get_inst_id(self):
         return self.env.get_inst_id()
-

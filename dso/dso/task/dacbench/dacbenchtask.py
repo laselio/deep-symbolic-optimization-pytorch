@@ -15,6 +15,8 @@ from dso.task.dacbench import dacbench_utils as util
 from gymnasium.spaces import Dict
 from gymnasium.wrappers import FlattenObservation
 
+from datetime import datetime
+
 REWARD_SEED_SHIFT = int(1e6)  # Reserve the first million seeds for evaluation
 
 
@@ -274,7 +276,7 @@ class DACBenchTask(HierarchicalTask):
         pprint("Instance: {}".format(self.env.instance))
         print(self.env.action_space)
         # hooking env up with logging
-        self.logger = Logger(experiment_name=experiment_name, output_path=Path(logging_dir))
+        self.logger = Logger(experiment_name=experiment_name+"_"+datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), output_path=Path(logging_dir))
         self.performance_logger = self.logger.add_module(PerformanceTrackingWrapper)
 
         if self.has_test_set:
