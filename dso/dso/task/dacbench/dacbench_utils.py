@@ -103,7 +103,7 @@ class ScalarActionWrapper(gym.ActionWrapper):
         return self.env.get_inst_id()
 
 
- # scalar log-learning-rate
+# scalar log-learning-rate
 # make it return the learning rate and the fixed momentum
 # Observation wrapper der alles in float 32 casted
 # __get attribute does not work, cast all relevant attributes through debugging

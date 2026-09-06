@@ -374,7 +374,6 @@ class DACBenchTask(HierarchicalTask):
             print("Evaluating on separate Evaluation Env")
             eval_env = self.eval_env
 
-        print(n_episodes)
         for i in range(n_episodes):
             # Always use random seeds
             obs, _ = eval_env.reset()
@@ -397,7 +396,6 @@ class DACBenchTask(HierarchicalTask):
 
             if evaluate:
                 self.logger.next_episode()
-                print("episode", i)
 
         return r_episodes
 
