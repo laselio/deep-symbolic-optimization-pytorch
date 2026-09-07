@@ -1,3 +1,5 @@
+import json
+
 from gymnasium import spaces
 import numpy as np
 
@@ -187,6 +189,7 @@ class DACBenchTask(HierarchicalTask):
             reward_scale=True,
             decision_tree_threshold_set=None,
             ref_action=None,
+            logging=True
     ):
         """
         Parameters
@@ -236,6 +239,8 @@ class DACBenchTask(HierarchicalTask):
         decision_tree_threshold_set : list
             A set of constants {tj} for constructing nodes (xi < tj) in decision
             trees.
+        logging: bool
+            Option to toggle logging off during hyperparamter optimization.
         """
 
         super(HierarchicalTask).__init__()
@@ -245,6 +250,7 @@ class DACBenchTask(HierarchicalTask):
         self.n_episodes_test = n_episodes_test
         self.stochastic = True
         self.reward_scale = reward_scale
+        self.logging = logging
 
         # Create the environment based on dacbench benchmark, add Wrappers for box space conversion and episode statistics
         self.eval_env = None
@@ -276,22 +282,26 @@ class DACBenchTask(HierarchicalTask):
         pprint("Instance: {}".format(self.env.instance))
         print(self.env.action_space)
         # hooking env up with logging
-        self.logger = Logger(experiment_name=experiment_name+"_"+datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), output_path=Path(logging_dir))
-        self.performance_logger = self.logger.add_module(PerformanceTrackingWrapper)
 
-        if self.has_test_set:
-            self.env = PerformanceTrackingWrapper(
-                self.env,
-                logger=self.performance_logger
-            )
-            self.logger.set_env(self.env)
+        self.logger = None
 
-        else:
-            self.eval_env = PerformanceTrackingWrapper(
-                self.eval_env,
-                logger=self.performance_logger
-            )
-            self.logger.set_env(self.eval_env)
+        if self.logging:
+            self.logger = Logger(experiment_name=experiment_name+"_"+datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), output_path=Path(logging_dir))
+            self.performance_logger = self.logger.add_module(PerformanceTrackingWrapper)
+
+            if self.has_test_set:
+                self.env = PerformanceTrackingWrapper(
+                    self.env,
+                    logger=self.performance_logger
+                )
+                self.logger.set_env(self.env)
+
+            else:
+                self.eval_env = PerformanceTrackingWrapper(
+                    self.eval_env,
+                    logger=self.performance_logger
+                )
+                self.logger.set_env(self.eval_env)
 
         print(self.env.observation_space)
         if isinstance(self.env.observation_space, Dict):
@@ -384,7 +394,7 @@ class DACBenchTask(HierarchicalTask):
             while not done:
                 action = self.action(p, obs)
                 obs, r, terminated, truncated, info = eval_env.step(action)
-                if evaluate:
+                if evaluate and self.logging:
                     self.logger.next_step()
                 done = terminated or truncated
                 episode_reward += r
@@ -394,7 +404,7 @@ class DACBenchTask(HierarchicalTask):
             else:
                 r_episodes[i] = episode_reward
 
-            if evaluate:
+            if evaluate and self.logging:
                 self.logger.next_episode()
 
         return r_episodes
@@ -431,6 +441,11 @@ class DACBenchTask(HierarchicalTask):
         print("len(r_episodes) =", len(r_episodes))
         print("first 10 =", r_episodes[:10])
 
+        # if logging is disabled, save the accumulated reward to a reward.json for hpo to read
+        if not self.logging:
+            acc_reward = np.sum(r_episodes)
+            with open("reward.json", "w") as f:
+                json.dump({"reward": acc_reward}, f)
         info = {
             "r_avg_test": r_avg_test
         }
